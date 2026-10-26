@@ -88,6 +88,7 @@ if settings.terminal_clipboard ~= false then
   translate("CTRL + V", "Paste", {{"CTRL", "V"}}, {{"CTRL + SHIFT", "V"}})
   -- Physical far-left Ctrl sends Super. Preserve Ctrl+C's terminal meaning there.
   translate("SUPER + C", "Terminal interrupt / universal copy", {{"CTRL", "C"}})
+  translate("SUPER + V", "Terminal Ctrl+V / universal paste", {{"CTRL", "V"}})
 end
 
 local function switch_app(direction)

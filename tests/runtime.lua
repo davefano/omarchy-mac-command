@@ -28,7 +28,7 @@ dofile("mac-command.lua")
 assert(configured.input.kb_options == "compose:caps,shift:both_capslock_cancel,ctrl:swap_lalt_lctl_lwin")
 local function run(key)
   sent = {}
-  bindings[key]()
+  assert(bindings[key], "Missing shortcut: " .. key)()
   while #timers > 0 do table.remove(timers, 1)() end
 end
 local function expect(index, mods, key, state)
@@ -58,6 +58,10 @@ run("CTRL + V")
 expect(1, "CTRL + SHIFT", "V", "down")
 run("SUPER + C")
 expect(1, "CTRL", "C", "down")
+-- The physical Ctrl key sends Super; Codex must receive literal Ctrl+V.
+run("SUPER + V")
+expect(1, "CTRL", "V", "down")
+expect(2, "CTRL", "V", "up")
 run("CTRL + LEFT")
 expect(1, "CTRL", "A", "down")
 run("CTRL + BACKSPACE")
@@ -81,5 +85,5 @@ assert(bindings["CTRL + ALT + code:13"] == "omasnap")
 dofile("mac-command.lua")
 local count = 0
 for _ in pairs(bindings) do count = count + 1 end
-assert(count == 22, "Unexpected number of bindings: " .. count)
+assert(count == 23, "Unexpected number of bindings: " .. count)
 print("Runtime checks passed (navigation, sequences, terminal clipboard, app cycling, reload)")

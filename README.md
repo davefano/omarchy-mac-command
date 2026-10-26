@@ -81,7 +81,10 @@ this plugin does not force applications to support commands they lack.
 
 In terminals tagged by Omarchy, Command+C/V sends Ctrl+Shift+C/V. The physical
 far-left Ctrl+C sends an interrupt again (overriding Omarchy's universal copy for
-that chord). Command+Left/Right uses Ctrl+A/E and Command+Backspace uses Ctrl+U,
+that chord). Physical far-left Ctrl+V sends literal Ctrl+V to terminal
+applications, restoring image attachment in Codex. Command+V remains ordinary
+text paste; use physical Ctrl+V for Codex image paste. Command+Left/Right uses
+Ctrl+A/E and Command+Backspace uses Ctrl+U,
 which suit typical shell prompts. Option+Backspace sends Ctrl+W and Option+Delete
 sends Alt+D. Shell editing modes, TUIs, and terminal selection differ; selection
 uses Shift+Home/End and terminal-specific behavior still applies. Embedded
@@ -149,7 +152,14 @@ executes the installed translation callbacks against it:
 python3 tests/live_text.py
 ```
 
-The live check needs GTK 4 and Python GObject bindings. It verifies real text
+To verify that literal Ctrl+V reaches a disposable foot terminal without reading
+or changing the clipboard:
+
+```sh
+python3 tests/live_terminal.py
+```
+
+The text-window check needs GTK 4 and Python GObject bindings. It verifies real text
 movement, selection, and deletion through Hyprland's synthetic key dispatches;
 it does not simulate physical keyboard hardware. Verify physical key placement
 and app-specific behavior by using the shortcuts in your own apps.
