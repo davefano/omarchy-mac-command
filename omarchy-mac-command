@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""Install a reversible, user-owned Hyprland keyboard extension."""
+import argparse
+from datetime import datetime
+import json
+import os
+import re
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+
+SOURCE = Path(__file__).resolve().parent
+CONFIG = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
+DATA = Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share"))) / "omarchy-mac-command"
+MAIN = CONFIG / "hypr/hyprland.lua"
+SETTINGS = CONFIG / "omarchy/mac-command.lua"
+STATE = DATA / "install-state.json"
+BEGIN = "-- BEGIN omarchy-mac-command\n"
+END = "-- END omarchy-mac-command\n"
+BLOCK = BEGIN + '''do
+  local data = os.getenv("XDG_DATA_HOME") or os.getenv("HOME") .. "/.local/share"
+  dofile(data .. "/omarchy-mac-command/mac-command.lua")
+end
+''' + END
+# Only migrate the exact aliases created during the initial experiment.
+ALIASES = '''-- Command-position aliases for launcher and screenshots (key sends Ctrl).
+hl.unbind("CTRL + SPACE")
+o.bind("CTRL + SPACE", "Omarchy menu", "omarchy-menu toggle")
+hl.unbind("CTRL + ALT + code:13")
+o.bind("CTRL + ALT + code:13", "Omasnap", "omasnap")
+'''
+
+
+def write(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(path.name + ".mac-command-tmp")
+    temp.write_text(text)
+    if path.exists():
+        shutil.copymode(path, temp)
+    temp.replace(path)
+
+
+def reload():
+    result = subprocess.run(["hyprctl", "reload"], capture_output=True, text=True)
+    if result.returncode:
+        raise RuntimeError("Hyprland reload failed: " + result.stderr.strip())
+    result = subprocess.run(["hyprctl", "configerrors"], capture_output=True, text=True)
+    if result.returncode or result.stdout.strip():
+        raise RuntimeError("Hyprland configuration errors: " + (result.stdout + result.stderr).strip())
+
+
+def install(no_reload):
+    if not MAIN.is_file():
+        raise RuntimeError("Expected Omarchy's Lua configuration at " + str(MAIN))
+    main = MAIN.read_text()
+    if BEGIN in main and BLOCK not in main:
+        raise RuntimeError("The managed loader was edited; reconcile it before installing.")
+    if not STATE.exists() and BEGIN in main:
+        raise RuntimeError("Found a loader without its installation state; refusing to adopt it.")
+    launcher = Path.home() / ".local/bin/omarchy-mac-command"
+    if launcher.exists() or launcher.is_symlink():
+        if not launcher.is_symlink() or launcher.resolve() != DATA / "omarchy-mac-command":
+            raise RuntimeError("Refusing to replace unrelated command: " + str(launcher))
+    state = json.loads(STATE.read_text()) if STATE.exists() else None
+    if state is None:
+        changes = [{"path": str(MAIN), "before": "", "after": BLOCK}]
+        bindings = CONFIG / "hypr/bindings.lua"
+        if bindings.exists() and ALIASES in bindings.read_text():
+            changes.append({"path": str(bindings), "before": ALIASES, "after": ""})
+        input_path = CONFIG / "hypr/input.lua"
+        needle = ",ctrl:swap_lalt_lctl_lwin"
+        if input_path.exists() and input_path.read_text().count(needle) == 1:
+            changes.append({"path": str(input_path), "before": needle, "after": ""})
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        backup = DATA / "backups" / stamp
+        backup.mkdir(parents=True)
+        for change in changes:
+            path = Path(change["path"])
+            shutil.copy2(path, backup / path.name)
+        state = {"version": 1, "backup": str(backup), "changes": changes}
+        write(STATE, json.dumps(state, indent=2) + "\n")
+    DATA.mkdir(parents=True, exist_ok=True)
+    for name in ("mac-command.lua", "omarchy-mac-command"):
+        target = DATA / name
+        if (SOURCE / name).resolve() != target.resolve():
+            shutil.copy2(SOURCE / name, target)
+    if not SETTINGS.exists():
+        shutil.copyfile(SOURCE / "settings.lua", DATA / "settings.lua")
+        write(SETTINGS, (DATA / "settings.lua").read_text())
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    if not launcher.is_symlink():
+        launcher.symlink_to(DATA / "omarchy-mac-command")
+    # These transformations converge if installation was interrupted.
+    for change in state["changes"]:
+        path = Path(change["path"])
+        text = path.read_text()
+        if path == MAIN:
+            if BLOCK not in text:
+                write(path, text.rstrip("\n") + "\n\n" + BLOCK)
+        elif change["before"] in text:
+            write(path, text.replace(change["before"], change["after"], 1))
+    if not no_reload:
+        try:
+            reload()
+        except RuntimeError:
+            uninstall(True)
+            reload()
+            raise
+    print("Mac Command installed. Settings: " + str(SETTINGS))
+    print("Original configuration backups: " + state["backup"])
+
+
+def uninstall(no_reload):
+    if not STATE.exists():
+        print("Mac Command is not installed.")
+        return
+    state = json.loads(STATE.read_text())
+    main = MAIN.read_text()
+    if BLOCK not in main:
+        raise RuntimeError("The managed loader is missing or edited; refusing to guess what to remove.")
+    restorations = []
+    for change in reversed(state["changes"]):
+        path = Path(change["path"])
+        text = path.read_text()
+        if path == MAIN:
+            text = text.replace(BLOCK, "", 1)
+        elif change["after"]:
+            if text.count(change["after"]) != 1:
+                raise RuntimeError("Cannot safely restore edited configuration: " + str(path))
+            text = text.replace(change["after"], change["before"], 1)
+        elif change["before"] == ALIASES:
+            if ALIASES not in text:
+                text = text.rstrip("\n") + "\n\n" + ALIASES
+        else:
+            # Reinsert only the removed XKB option, retaining subsequent settings.
+            match = re.search(r'(kb_options\s*=\s*")([^"\n]*)(")', text)
+            if not match or "ctrl:swap_lalt_lctl_lwin" in match[2]:
+                raise RuntimeError("Cannot safely restore keyboard options: " + str(path))
+            text = text[:match.end(2)] + change["before"] + text[match.end(2):]
+        restorations.append((path, text))
+    for path, text in restorations:
+        write(path, text)
+    if not no_reload:
+        reload()
+    STATE.unlink()
+    launcher = Path.home() / ".local/bin/omarchy-mac-command"
+    if launcher.is_symlink() and launcher.resolve() == DATA / "omarchy-mac-command":
+        launcher.unlink()
+    print("Mac Command removed. Previous mappings restored; settings and backups retained.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=("install", "uninstall", "status"))
+    parser.add_argument("--no-reload", action="store_true", help="Edit files without contacting Hyprland")
+    args = parser.parse_args()
+    try:
+        if args.action == "install":
+            install(args.no_reload)
+        elif args.action == "uninstall":
+            uninstall(args.no_reload)
+        else:
+            active = STATE.exists() and MAIN.exists() and BLOCK in MAIN.read_text()
+            print("Installed" if active else "Not installed")
+            print("Settings: " + str(SETTINGS))
+    except (RuntimeError, OSError, ValueError) as error:
+        print("Mac Command: " + str(error), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
