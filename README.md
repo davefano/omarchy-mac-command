@@ -2,8 +2,9 @@
 
 Use the key beside Space as Command for application shortcuts, with Mac-style
 text navigation, terminal clipboard shortcuts, app switching, and a launcher.
-Runs entirely in Hyprland's Lua configuration. No keyboard daemon, root access,
-background process, or extra runtime dependency.
+Integrates with Hyprland’s Lua configuration. No keyboard daemon, root access,
+or persistent background process. Terminal image detection uses Omarchy’s
+existing Python and wl-clipboard tools.
 
 ## Install
 
@@ -79,11 +80,16 @@ Alt. The names in application menus will still show Ctrl.
 Native shortcuts in the first seven rows retain each application's behavior;
 this plugin does not force applications to support commands they lack.
 
-In terminals tagged by Omarchy, Command+C/V sends Ctrl+Shift+C/V. The physical
+In terminals tagged by Omarchy, Command+C sends Ctrl+Shift+C. Command+V
+checks the clipboard’s advertised formats: images send Ctrl+V to the application
+(for example, Codex image attachment); text sends Ctrl+Shift+V for ordinary paste.
+Only format names are read, not clipboard contents. This needs `wl-paste` from
+`wl-clipboard`; without it, paste falls back to text.
+A short-lived helper checks formats outside Hyprland’s event loop, with a 250 ms
+limit and text fallback. It cancels paste if the focused window changes. The physical
 far-left Ctrl+C sends an interrupt again (overriding Omarchy's universal copy for
 that chord). Physical far-left Ctrl+V sends literal Ctrl+V to terminal
-applications, restoring image attachment in Codex. Command+V remains ordinary
-text paste; use physical Ctrl+V for Codex image paste. Command+Left/Right uses
+applications as a manual alternative for image attachment. Command+Left/Right uses
 Ctrl+A/E and Command+Backspace uses Ctrl+U,
 which suit typical shell prompts. Option+Backspace sends Ctrl+W and Option+Delete
 sends Alt+D. Shell editing modes, TUIs, and terminal selection differ; selection
@@ -157,6 +163,8 @@ or changing the clipboard:
 
 ```sh
 python3 tests/live_terminal.py
+# With an image already copied, also verify Command+V:
+python3 tests/live_terminal.py --command-image
 ```
 
 The text-window check needs GTK 4 and Python GObject bindings. It verifies real text

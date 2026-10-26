@@ -150,21 +150,48 @@ def uninstall(no_reload):
     print("Mac Command removed. Previous mappings restored; settings and backups retained.")
 
 
+def paste_in_terminal(address):
+    if not re.fullmatch(r"0x[0-9a-fA-F]+", address):
+        raise ValueError("Expected a Hyprland window address")
+    try:
+        probe = subprocess.run(["wl-paste", "--list-types"], timeout=0.25,
+                               capture_output=True, text=True)
+        image = probe.returncode == 0 and any(
+            mime.startswith("image/") for mime in probe.stdout.splitlines())
+    except (OSError, subprocess.TimeoutExpired):
+        image = False
+    mods = "CTRL" if image else "CTRL + SHIFT"
+    # Query Wayland outside Hyprland's event loop. Recheck focus after the probe
+    # and pin both events to that window so delayed paste cannot hit a new app.
+    code = f'''local window = hl.get_active_window()
+if not window or window.address ~= "{address}" then return end
+hl.dispatch(hl.dsp.send_key_state({{window = window, mods = "{mods}", key = "V", state = "down"}}))
+hl.timer(function()
+  hl.dispatch(hl.dsp.send_key_state({{window = window, mods = "{mods}", key = "V", state = "up"}}))
+end, {{timeout = 20, type = "oneshot"}})'''
+    subprocess.run(["hyprctl", "eval", code], check=True, capture_output=True, text=True, timeout=2)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("install", "uninstall", "status"))
+    parser.add_argument("action", choices=("install", "uninstall", "status", "paste"))
     parser.add_argument("--no-reload", action="store_true", help="Edit files without contacting Hyprland")
+    parser.add_argument("--window", help="Target window address for terminal paste")
     args = parser.parse_args()
     try:
         if args.action == "install":
             install(args.no_reload)
         elif args.action == "uninstall":
             uninstall(args.no_reload)
+        elif args.action == "paste":
+            if not args.window:
+                parser.error("paste requires --window")
+            paste_in_terminal(args.window)
         else:
             active = STATE.exists() and MAIN.exists() and BLOCK in MAIN.read_text()
             print("Installed" if active else "Not installed")
             print("Settings: " + str(SETTINGS))
-    except (RuntimeError, OSError, ValueError) as error:
+    except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as error:
         print("Mac Command: " + str(error), file=sys.stderr)
         return 1
     return 0

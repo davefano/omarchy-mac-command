@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 loader = importlib.machinery.SourceFileLoader("installer", str(ROOT / "omarchy-mac-command"))
@@ -97,6 +98,35 @@ class InstallTests(unittest.TestCase):
         self.call("install")
         self.call("uninstall")
         self.assertEqual((self.config / "bindings.lua").read_text(), "-- untouched\n")
+
+
+class PasteTests(unittest.TestCase):
+    def test_image_uses_application_paste_and_text_uses_terminal_paste(self):
+        for formats, expected in (("image/png\n", "CTRL"),
+                                  ("text/plain\nimage/jpeg\n", "CTRL"),
+                                  ("text/plain\n", "CTRL + SHIFT"),
+                                  ("application/image-helper\n", "CTRL + SHIFT")):
+            with self.subTest(formats=formats), patch.object(installer.subprocess, "run") as run:
+                run.side_effect = [subprocess.CompletedProcess([], 0, stdout=formats),
+                                   subprocess.CompletedProcess([], 0)]
+                installer.paste_in_terminal("0x123")
+                command = run.call_args_list[1].args[0]
+                self.assertEqual(command[:2], ["hyprctl", "eval"])
+                self.assertIn('mods = "' + expected + '"', command[2])
+                self.assertEqual(run.call_args_list[0].args[0], ["wl-paste", "--list-types"])
+
+    def test_unavailable_clipboard_falls_back_to_text(self):
+        for failure in (FileNotFoundError(), subprocess.TimeoutExpired("wl-paste", 0.25)):
+            with self.subTest(failure=type(failure)), patch.object(installer.subprocess, "run") as run:
+                run.side_effect = [failure, subprocess.CompletedProcess([], 0)]
+                installer.paste_in_terminal("0x123")
+                self.assertIn('mods = "CTRL + SHIFT"', run.call_args_list[1].args[0][2])
+
+    def test_invalid_window_is_rejected_before_querying_clipboard(self):
+        with patch.object(installer.subprocess, "run") as run:
+            with self.assertRaises(ValueError):
+                installer.paste_in_terminal('0x1"; os.exit()')
+            run.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -2,7 +2,9 @@ local bindings, sent, timers, configured = {}, {}, {}, nil
 local window = { class = "browser", tags = {}, mapped = true, workspace = { id = 1 }, focus_history_id = 0, address = "0x1" }
 local windows = { window }
 local focused
+local launched
 hl = {
+  exec_cmd = function(command) launched = command end,
   get_config = function() return "compose:caps,shift:both_capslock_cancel,altwin:swap_lalt_lwin" end,
   config = function(value) configured = value end,
   unbind = function(key) bindings[key] = nil end,
@@ -23,6 +25,7 @@ hl = {
 o = {
   bind = function(key, description, action) bindings[key] = action end,
   cmd_present = function() return true end,
+  shell_quote = function(value) return "\'" .. value .. "\'" end,
 }
 dofile("mac-command.lua")
 assert(configured.input.kb_options == "compose:caps,shift:both_capslock_cancel,ctrl:swap_lalt_lctl_lwin")
@@ -55,7 +58,14 @@ window.tags = { "terminal*" }
 run("CTRL + C")
 expect(1, "CTRL + SHIFT", "C", "down")
 run("CTRL + V")
-expect(1, "CTRL + SHIFT", "V", "down")
+assert(#sent == 0, "Terminal paste must not query Wayland inside the compositor")
+assert(launched:find(" paste --window '0x1'", 1, true), "Terminal paste must launch the focus-scoped helper")
+window.tags = {}
+launched = nil
+run("CTRL + V")
+expect(1, "CTRL", "V", "down")
+assert(not launched, "GUI paste must not inspect the clipboard")
+window.tags = { "terminal*" }
 run("SUPER + C")
 expect(1, "CTRL", "C", "down")
 -- The physical Ctrl key sends Super; Codex must receive literal Ctrl+V.

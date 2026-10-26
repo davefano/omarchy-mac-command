@@ -30,7 +30,12 @@ def receiver(path):
         termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, saved)
 
 
-def check():
+def check(command_image=False):
+    if command_image:
+        formats = subprocess.run(["wl-paste", "--list-types"], check=True,
+                                 capture_output=True, text=True, timeout=2).stdout
+        assert any(mime.startswith("image/") for mime in formats.splitlines()), "Copy an image first"
+    shortcut = "CTRL + V" if command_image else "SUPER + V"
     with tempfile.TemporaryDirectory(prefix="mac-command-terminal-") as directory:
         result = Path(directory) / "result.json"
         process = subprocess.Popen(["foot", "--app-id=foot", "--title=" + TITLE,
@@ -50,19 +55,20 @@ for _, tag in ipairs(active.tags or {}) do if tag:gsub("%*$", "") == "terminal" 
 assert(tagged, "Test terminal must have Omarchy's terminal tag")
 local actions = {}
 local env = setmetatable({
-  o = { bind = function(key, _, action) actions[key] = action end, cmd_present = o.cmd_present },
+  o = { bind = function(key, _, action) actions[key] = action end, cmd_present = o.cmd_present, shell_quote = o.shell_quote },
   hl = setmetatable({ config = function() end, unbind = function() end }, { __index = hl }),
 }, { __index = _G })
 local data = os.getenv("XDG_DATA_HOME") or os.getenv("HOME") .. "/.local/share"
 assert(loadfile(data .. "/omarchy-mac-command/mac-command.lua", "t", env))()
-assert(actions["SUPER + V"], "Missing physical Ctrl+V shortcut")()'''
+assert(actions[SHORTCUT], "Missing paste shortcut")()'''.replace("SHORTCUT", json.dumps(shortcut))
             response = subprocess.run(["hyprctl", "eval", code], check=True,
                                       capture_output=True, text=True, timeout=5)
             assert "error" not in response.stdout.lower(), response.stdout
             process.wait(timeout=10)
             actual = json.loads(result.read_text())
             assert actual == [0x16], f"Expected Ctrl+V (22), received bytes {actual}"
-            print("Live terminal check passed: literal Ctrl+V reached foot (byte 0x16)")
+            label = "Command+V with an image" if command_image else "Physical Ctrl+V"
+            print(f"Live terminal check passed: {label} delivered byte 0x16 to foot")
         finally:
             if process.poll() is None:
                 process.terminate()
@@ -73,4 +79,4 @@ if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--receiver":
         receiver(Path(sys.argv[2]))
     else:
-        check()
+        check(command_image="--command-image" in sys.argv)

@@ -85,7 +85,14 @@ end
 
 if settings.terminal_clipboard ~= false then
   translate("CTRL + C", "Copy", {{"CTRL", "C"}}, {{"CTRL + SHIFT", "C"}})
-  translate("CTRL + V", "Paste", {{"CTRL", "V"}}, {{"CTRL + SHIFT", "V"}})
+  bind("CTRL + V", "Paste text or image", function()
+    if terminal() then
+      local command = os.getenv("HOME") .. "/.local/bin/omarchy-mac-command"
+      hl.exec_cmd(o.shell_quote(command) .. " paste --window " .. o.shell_quote(hl.get_active_window().address))
+    else
+      send({{"CTRL", "V"}})
+    end
+  end)
   -- Physical far-left Ctrl sends Super. Preserve Ctrl+C's terminal meaning there.
   translate("SUPER + C", "Terminal interrupt / universal copy", {{"CTRL", "C"}})
   translate("SUPER + V", "Terminal Ctrl+V / universal paste", {{"CTRL", "V"}})
