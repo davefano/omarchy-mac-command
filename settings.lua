@@ -11,7 +11,7 @@ return {
   desktop_layer = true,
   desktop_prefix = "SUPER + ESCAPE",
   launcher = "omarchy-menu toggle",
-  desktop_shortcuts = {}, -- Overrides inside the one-shot desktop layer.
+  desktop_shortcuts = {}, -- Explicit app launchers or overrides in the desktop layer.
   disabled_shortcuts = {},
   terminal_classes = {}, -- Additional terminal app IDs, if Omarchy hasn't tagged them.
 }

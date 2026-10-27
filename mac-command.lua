@@ -12,9 +12,10 @@ if settings.enabled == false then return end
 
 local disabled = {}
 for _, shortcut in ipairs(settings.disabled_shortcuts or {}) do disabled[shortcut] = true end
-local function bind(keys, description, action)
+local function bind(keys, description, action, replaces)
   if disabled[keys] then return end
   hl.unbind(keys)
+  for _, alias in ipairs(replaces or {}) do hl.unbind(alias) end
   o.bind(keys, "Mac Command: " .. description, action)
 end
 
@@ -58,10 +59,10 @@ local function send(sequence, index)
   end, { timeout = 20, type = "oneshot" })
 end
 
-local function translate(keys, description, normal, in_terminal)
+local function translate(keys, description, normal, in_terminal, replaces)
   bind(keys, description, function()
     send((terminal() and in_terminal) or normal)
-  end)
+  end, replaces)
 end
 
 if settings.navigation ~= false then
@@ -91,17 +92,15 @@ if settings.applications ~= false then
     translate("SUPER + SHIFT + " .. key, "App Shift+" .. key, {{"CTRL + SHIFT", key}})
   end
   translate("SUPER + comma", "App preferences", {{"CTRL", "comma"}})
-  -- Omarchy binds these physical keys for window resizing. Remove those
-  -- bindings too, so a zoom shortcut cannot also resize the window.
-  local function zoom(keys, mods, key, physical)
-    if not disabled[keys] and physical then hl.unbind(physical) end
-    translate(keys, "App zoom", {{mods, key}})
+  local zoom_shortcuts = {
+    { "SUPER + minus", "CTRL", "minus", { "SUPER + code:20" } },
+    { "SUPER + equal", "CTRL", "equal", { "SUPER + code:21" } },
+    { "SUPER + SHIFT + equal", "CTRL + SHIFT", "equal", { "SUPER + SHIFT + code:21" } },
+    { "SUPER + 0", "CTRL", "0" },
+  }
+  for _, shortcut in ipairs(zoom_shortcuts) do
+    translate(shortcut[1], "App zoom", {{shortcut[2], shortcut[3]}}, nil, shortcut[4])
   end
-  for _, key in ipairs({ "minus", "equal", "0" }) do
-    local code = key == "minus" and "20" or key == "equal" and "21" or nil
-    zoom("SUPER + " .. key, "CTRL", key, code and ("SUPER + code:" .. code))
-  end
-  zoom("SUPER + SHIFT + equal", "CTRL + SHIFT", "equal", "SUPER + SHIFT + code:21")
 end
 
 if settings.terminal_clipboard ~= false then
@@ -160,13 +159,6 @@ if settings.desktop_layer ~= false then
       { "S", "Scratchpad", hl.dsp.workspace.toggle_special("scratchpad") },
       { "L", "Workspace layout", "omarchy-hyprland-workspace-layout-toggle" },
       { "G", "Window grouping", hl.dsp.group.toggle() },
-      { "SHIFT + F", "File manager", { omarchy = "nautilus" } },
-      { "SHIFT + G", "Signal", { omarchy = "signal" } },
-      { "SHIFT + N", "Editor", { omarchy = "editor" } },
-      { "SHIFT + P", "Google Photos", { webapp = "https://photos.google.com/" } },
-      { "SHIFT + S", "Google Maps", { webapp = "https://maps.google.com/" } },
-      { "SHIFT + W", "Omawrite", { launch = "omawrite" } },
-      { "SHIFT + C", "Calendar", { webapp = "https://app.hey.com/calendar/weeks/" } },
       { "P", "Pseudo window", hl.dsp.window.pseudo() },
       { "O", "Pop window out", "omarchy-hyprland-window-pop" },
       { "K", "Keybindings", "omarchy-menu-keybindings" },

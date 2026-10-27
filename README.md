@@ -126,15 +126,20 @@ Press **Command+Escape, release both keys, then press**:
 | Backspace | Toggle transparency |
 | comma | Dismiss notification |
 | K | Show keybindings |
-| Shift+F / G / N | File manager / Signal / editor |
-| Shift+P / S / W / C | Google Photos / Google Maps / Omawrite / calendar |
 | Escape | System menu |
 | Any other key | Cancel the layer (key is consumed) |
 
 The layer exits after one action. Its prefix replaces Command+Escape's former
 system-menu action; the system menu is available with Escape inside the layer.
-These are explicit desktop defaults, not dynamically copied personal bindings.
-Use `desktop_shortcuts` below to preserve custom commands at their new locations.
+The built-in layer contains window-management and desktop utility actions.
+App launchers belong in `desktop_shortcuts`, so the plugin does not recreate
+Omarchy app bindings you have disabled or replace your preferred launch commands.
+Existing configured shortcuts, such as Flea below, continue to work.
+
+**Upgrade note:** automatic layer launchers for file manager, editor, Signal,
+calendar, Photos, Maps, and Omawrite have been removed. Add the launchers you want
+to `desktop_shortcuts`; these are explicit choices independent of Omarchy's
+preinstalled-app preference.
 
 ## Customize
 
@@ -154,6 +159,7 @@ return {
   launcher = "omarchy-menu toggle",
   desktop_shortcuts = {
     ["SHIFT + F"] = { launch = "flea --gui" },
+    ["SHIFT + N"] = { omarchy = "editor" },
   },
   disabled_shortcuts = {
     -- "SUPER + K",          -- Preserve the underlying desktop shortcut
@@ -200,7 +206,9 @@ luac -p mac-command.lua
 
 Installer tests use disposable homes. Runtime checks cover app translation,
 native Control, navigation, clipboard, app switching, desktop-layer registration,
-profiles, settings, and repeated loading. With the module installed:
+profiles, settings, alias replacement, and repeated loading. The registration
+mock retains duplicate bindings so reload and override checks can detect them.
+With the module installed:
 
 ```sh
 python3 tests/live_text.py
