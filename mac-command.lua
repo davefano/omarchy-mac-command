@@ -30,7 +30,7 @@ if settings.keyboard ~= false then
   end
   local keyboard = settings.keyboard or "pc"
   assert(keyboard == "pc" or keyboard == "apple", "Mac Command keyboard must be pc, apple, or false")
-  table.insert(options, keyboard == "apple" and "ctrl:swap_lwin_lctl" or "ctrl:swap_lalt_lctl_lwin")
+  if keyboard == "pc" then table.insert(options, "altwin:swap_lalt_lwin") end
   hl.config({ input = { kb_options = table.concat(options, ",") } })
 end
 
@@ -71,23 +71,45 @@ if settings.navigation ~= false then
     local word = shift and "CTRL + SHIFT" or "CTRL"
     local terminal_start = shift and {{"SHIFT", "Home"}} or {{"CTRL", "A"}}
     local terminal_end = shift and {{"SHIFT", "End"}} or {{"CTRL", "E"}}
-    translate(prefix .. "CTRL + LEFT", "Line start", {{selection, "Home"}}, terminal_start)
-    translate(prefix .. "CTRL + RIGHT", "Line end", {{selection, "End"}}, terminal_end)
-    translate(prefix .. "CTRL + UP", "Document start", {{word, "Home"}})
-    translate(prefix .. "CTRL + DOWN", "Document end", {{word, "End"}})
+    translate(prefix .. "SUPER + LEFT", "Line start", {{selection, "Home"}}, terminal_start)
+    translate(prefix .. "SUPER + RIGHT", "Line end", {{selection, "End"}}, terminal_end)
+    translate(prefix .. "SUPER + UP", "Document start", {{word, "Home"}})
+    translate(prefix .. "SUPER + DOWN", "Document end", {{word, "End"}})
     translate(prefix .. "ALT + LEFT", "Previous word", {{word, "Left"}})
     translate(prefix .. "ALT + RIGHT", "Next word", {{word, "Right"}})
   end
-  translate("CTRL + BACKSPACE", "Delete to line start", {{"SHIFT", "Home"}, {"", "BackSpace"}}, {{"CTRL", "U"}})
+  translate("SUPER + BACKSPACE", "Delete to line start", {{"SHIFT", "Home"}, {"", "BackSpace"}}, {{"CTRL", "U"}})
   translate("ALT + BACKSPACE", "Delete previous word", {{"CTRL", "BackSpace"}}, {{"CTRL", "W"}})
   translate("ALT + DELETE", "Delete next word", {{"CTRL", "Delete"}}, {{"ALT", "D"}})
 end
 
+if settings.applications ~= false then
+  for _, key in ipairs({ "A", "B", "D", "E", "I", "U", "G", "K", "L", "N", "O", "P", "Q", "R", "S", "T", "W", "Z" }) do
+    translate("SUPER + " .. key, "App " .. key, {{"CTRL", key}})
+  end
+  for _, key in ipairs({ "F", "G", "N", "P", "S", "T", "W", "Z" }) do
+    translate("SUPER + SHIFT + " .. key, "App Shift+" .. key, {{"CTRL + SHIFT", key}})
+  end
+  translate("SUPER + comma", "App preferences", {{"CTRL", "comma"}})
+  -- Omarchy binds these physical keys for window resizing. Remove those
+  -- bindings too, so a zoom shortcut cannot also resize the window.
+  local function zoom(keys, mods, key, physical)
+    if not disabled[keys] and physical then hl.unbind(physical) end
+    translate(keys, "App zoom", {{mods, key}})
+  end
+  for _, key in ipairs({ "minus", "equal", "0" }) do
+    local code = key == "minus" and "20" or key == "equal" and "21" or nil
+    zoom("SUPER + " .. key, "CTRL", key, code and ("SUPER + code:" .. code))
+  end
+  zoom("SUPER + SHIFT + equal", "CTRL + SHIFT", "equal", "SUPER + SHIFT + code:21")
+end
+
 if settings.terminal_clipboard ~= false then
-  translate("CTRL + C", "Copy", {{"CTRL", "C"}}, {{"CTRL + SHIFT", "C"}})
-  translate("CTRL + V", "Paste", {{"CTRL", "V"}}, {{"CTRL + SHIFT", "V"}})
-  -- Physical far-left Ctrl sends Super. Preserve Ctrl+C's terminal meaning there.
-  translate("SUPER + C", "Terminal interrupt / universal copy", {{"CTRL", "C"}})
+  translate("SUPER + C", "Copy", {{"CTRL", "C"}}, {{"CTRL + SHIFT", "C"}})
+  translate("SUPER + V", "Paste", {{"CTRL", "V"}}, {{"CTRL + SHIFT", "V"}})
+  translate("SUPER + X", "Cut", {{"CTRL", "X"}})
+  translate("SUPER + SHIFT + C", "Copy (alternate)", {{"CTRL + SHIFT", "C"}}, {{"CTRL + SHIFT", "C"}})
+  translate("SUPER + SHIFT + V", "Paste (alternate)", {{"CTRL + SHIFT", "V"}}, {{"CTRL + SHIFT", "V"}})
 end
 
 local function switch_app(direction)
@@ -114,15 +136,58 @@ local function switch_app(direction)
   hl.dispatch(hl.dsp.window.alter_zorder({ window = target, mode = "top" }))
 end
 if settings.app_switching ~= false then
-  bind("CTRL + TAB", "Next app", function() switch_app(1) end)
-  bind("CTRL + SHIFT + TAB", "Previous app", function() switch_app(-1) end)
+  bind("SUPER + TAB", "Next app", function() switch_app(1) end)
+  bind("SUPER + SHIFT + TAB", "Previous app", function() switch_app(-1) end)
 end
 
 if settings.desktop ~= false then
-  bind("CTRL + SPACE", "Launcher", settings.launcher or "omarchy-menu toggle")
+  bind("SUPER + SPACE", "Launcher", settings.launcher or "omarchy-menu toggle")
   if o.cmd_present("omasnap") then
-    bind("CTRL + ALT + code:13", "Screenshot (Omasnap)", "omasnap")
+    bind("SUPER + ALT + code:13", "Screenshot (Omasnap)", "omasnap")
   else
-    bind("CTRL + ALT + code:13", "Screenshot", "omarchy-capture-screenshot")
+    bind("SUPER + ALT + code:13", "Screenshot", "omarchy-capture-screenshot")
   end
+end
+
+-- A one-shot desktop layer keeps window actions away from app shortcuts.
+if settings.desktop_layer ~= false then
+  bind(settings.desktop_prefix or "SUPER + ESCAPE", "Desktop layer", hl.dsp.submap("mac-command-desktop"))
+  hl.define_submap("mac-command-desktop", "reset", function()
+    local actions = {
+      { "F", "Fullscreen", hl.dsp.window.fullscreen({ mode = "fullscreen" }) },
+      { "T", "Floating", hl.dsp.window.float({ action = "toggle" }) },
+      { "W", "Close window", hl.dsp.window.close() },
+      { "S", "Scratchpad", hl.dsp.workspace.toggle_special("scratchpad") },
+      { "L", "Workspace layout", "omarchy-hyprland-workspace-layout-toggle" },
+      { "G", "Window grouping", hl.dsp.group.toggle() },
+      { "SHIFT + F", "File manager", { omarchy = "nautilus" } },
+      { "SHIFT + G", "Signal", { omarchy = "signal" } },
+      { "SHIFT + N", "Editor", { omarchy = "editor" } },
+      { "SHIFT + P", "Google Photos", { webapp = "https://photos.google.com/" } },
+      { "SHIFT + S", "Google Maps", { webapp = "https://maps.google.com/" } },
+      { "SHIFT + W", "Omawrite", { launch = "omawrite" } },
+      { "SHIFT + C", "Calendar", { webapp = "https://app.hey.com/calendar/weeks/" } },
+      { "P", "Pseudo window", hl.dsp.window.pseudo() },
+      { "O", "Pop window out", "omarchy-hyprland-window-pop" },
+      { "K", "Keybindings", "omarchy-menu-keybindings" },
+      { "TAB", "Next workspace", hl.dsp.focus({ workspace = "e+1" }) },
+      { "SHIFT + TAB", "Previous workspace", hl.dsp.focus({ workspace = "e-1" }) },
+      { "BACKSPACE", "Transparency", "omarchy-hyprland-window-transparency-toggle" },
+      { "comma", "Dismiss notification", "omarchy-shell notifications dismissOne" },
+      { "ESCAPE", "System menu", "omarchy-menu toggle system" },
+      { "minus", "Resize narrower", hl.dsp.window.resize({ x = -100, y = 0, relative = true }) },
+      { "equal", "Resize wider", hl.dsp.window.resize({ x = 100, y = 0, relative = true }) },
+    }
+    for _, direction in ipairs({ {"LEFT", "l"}, {"RIGHT", "r"}, {"UP", "u"}, {"DOWN", "d"} }) do
+      table.insert(actions, { direction[1], "Focus window", hl.dsp.focus({ direction = direction[2] }) })
+      table.insert(actions, { "SHIFT + " .. direction[1], "Swap window", hl.dsp.window.swap({ direction = direction[2] }) })
+    end
+    for _, action in ipairs(actions) do
+      bind(action[1], action[2], action[3])
+    end
+    for keys, action in pairs(settings.desktop_shortcuts or {}) do
+      bind(keys, "Custom desktop action", action)
+    end
+    bind("catchall", "Leave desktop layer", hl.dsp.submap("reset"))
+  end)
 end
