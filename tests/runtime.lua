@@ -31,12 +31,14 @@ end
 local window = { class = "browser", tags = {}, mapped = true, workspace = { id = 1 }, focus_history_id = 0, address = "0x1" }
 local windows = { window }
 local focused
+local launched
 local options = "compose:caps,shift:both_capslock_cancel,ctrl:swap_lalt_lctl_lwin"
 local settings = {}
 local function dispatcher(kind)
   return function(value) return { kind = kind, value = value } end
 end
 local hl = {
+  exec_cmd = function(command) launched = command end,
   get_config = function() return options end,
   config = function(value) configured = value; options = value.input.kb_options end,
   unbind = function(key)
@@ -79,6 +81,7 @@ local env = setmetatable({
       table.insert(bindings, { scope = submap, keys = key, action = action })
     end,
     cmd_present = function() return true end,
+    shell_quote = function(value) return "'" .. value .. "'" end,
   },
   io = { open = function() return { close = function() end } end },
   dofile = function() return settings end,
@@ -90,6 +93,7 @@ local function load(value)
 end
 local function run(key)
   sent = {}
+  launched = nil
   assert(type(binding(":" .. key)) == "function", "Missing callback: " .. key)
   binding(":" .. key)()
   while #timers > 0 do table.remove(timers, 1)() end
@@ -128,11 +132,18 @@ run("SUPER + SHIFT + equal")
 expect(1, "CTRL + SHIFT", "equal", "down")
 run("SUPER + C")
 expect(1, "CTRL", "C", "down")
+run("SUPER + V")
+expect(1, "CTRL", "V", "down")
+assert(not launched, "GUI paste must not inspect the clipboard")
 window.tags = { "terminal*" }
 run("SUPER + C")
 expect(1, "CTRL + SHIFT", "C", "down")
 run("SUPER + V")
+assert(#sent == 0, "Terminal paste must query Wayland outside the compositor")
+assert(launched:find(" paste --window '0x1'", 1, true), "Terminal paste must launch the focus-scoped helper")
+run("SUPER + SHIFT + V")
 expect(1, "CTRL + SHIFT", "V", "down")
+expect(2, "CTRL + SHIFT", "V", "up")
 run("SUPER + LEFT")
 expect(1, "CTRL", "A", "down")
 run("SUPER + BACKSPACE")

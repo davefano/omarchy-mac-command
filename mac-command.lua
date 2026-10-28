@@ -105,7 +105,14 @@ end
 
 if settings.terminal_clipboard ~= false then
   translate("SUPER + C", "Copy", {{"CTRL", "C"}}, {{"CTRL + SHIFT", "C"}})
-  translate("SUPER + V", "Paste", {{"CTRL", "V"}}, {{"CTRL + SHIFT", "V"}})
+  bind("SUPER + V", "Paste text or image", function()
+    if terminal() then
+      local command = os.getenv("HOME") .. "/.local/bin/omarchy-mac-command"
+      hl.exec_cmd(o.shell_quote(command) .. " paste --window " .. o.shell_quote(hl.get_active_window().address))
+    else
+      send({{"CTRL", "V"}})
+    end
+  end)
   translate("SUPER + X", "Cut", {{"CTRL", "X"}})
   translate("SUPER + SHIFT + C", "Copy (alternate)", {{"CTRL + SHIFT", "C"}}, {{"CTRL + SHIFT", "C"}})
   translate("SUPER + SHIFT + V", "Paste (alternate)", {{"CTRL + SHIFT", "V"}}, {{"CTRL + SHIFT", "V"}})

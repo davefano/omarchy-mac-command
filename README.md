@@ -2,7 +2,8 @@
 
 Use one Command key for Mac-style application shortcuts and Omarchy desktop
 shortcuts. Physical Control stays Ctrl, including Ctrl+C in terminals. Runs in
-Hyprland's Lua configuration without a keyboard daemon or root access.
+Hyprland's Lua configuration without a keyboard daemon or root access. Terminal
+image detection uses Python and `wl-paste` from `wl-clipboard`.
 
 ## Install
 
@@ -92,8 +93,14 @@ shortcut list, not a catch-all translation. Command+1–9 keeps Omarchy workspac
 switching rather than browser tab selection. Command+Return still opens a
 terminal. Command+period retains your underlying binding, such as dictation.
 
-In Omarchy-tagged terminals, Command+C/V sends Ctrl+Shift+C/V. Command+Left/Right
-uses Ctrl+A/E, Command+Backspace uses Ctrl+U, Option+Backspace uses Ctrl+W, and
+In Omarchy-tagged terminals, Command+C sends Ctrl+Shift+C. Command+V checks
+clipboard format names: images send Ctrl+V for application image attachment;
+text sends Ctrl+Shift+V for ordinary terminal paste. Only format names are read.
+A short-lived helper checks outside Hyprland's event loop, with a 250 ms limit
+and text fallback if `wl-paste` is unavailable. Paste is canceled if focus changes.
+Command+Shift+V always sends Ctrl+Shift+V. Physical Ctrl+V stays native and can
+serve as a manual image-paste alternative.
+Command+Left/Right uses Ctrl+A/E, Command+Backspace uses Ctrl+U, Option+Backspace uses Ctrl+W, and
 Option+Delete uses Alt+D. Physical Control is not translated by this plugin:
 Ctrl+C interrupts, Ctrl+D sends EOF, and Ctrl+Z suspends, subject to the app's own
 behavior and any independent desktop bindings. Embedded editor terminals are not
@@ -218,3 +225,13 @@ The live check needs GTK 4 and Python GObject bindings. It opens a disposable GT
 text window and runs the installed callbacks against real text movement,
 selection, and deletion. It does not simulate physical keyboard hardware.
 Verify key placement and app-specific behavior in your own apps.
+
+To check native Ctrl+V dispatch in a disposable foot terminal, or Command+V with
+an image already copied:
+
+```sh
+python3 tests/live_terminal.py
+python3 tests/live_terminal.py --command-image
+```
+
+These checks use the installed module and do not simulate physical keyboard hardware.
