@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Verify physical Ctrl+V's callback reaches a disposable terminal as byte 0x16.
+"""Verify native Ctrl+V dispatch reaches a disposable terminal as byte 0x16.
 
-No clipboard contents are read or changed. The callback is invoked through Lua;
-this check does not simulate a physical keyboard.
+No clipboard contents are read or changed. Dispatch and the Command callback
+are invoked through Lua; this check does not simulate a physical keyboard.
 """
 import json
 from pathlib import Path
@@ -35,7 +35,7 @@ def check(command_image=False):
         formats = subprocess.run(["wl-paste", "--list-types"], check=True,
                                  capture_output=True, text=True, timeout=2).stdout
         assert any(mime.startswith("image/") for mime in formats.splitlines()), "Copy an image first"
-    shortcut = "CTRL + V" if command_image else "SUPER + V"
+    shortcut = "SUPER + V"
     with tempfile.TemporaryDirectory(prefix="mac-command-terminal-") as directory:
         result = Path(directory) / "result.json"
         process = subprocess.Popen(["foot", "--app-id=foot", "--title=" + TITLE,
@@ -56,18 +56,25 @@ assert(tagged, "Test terminal must have Omarchy's terminal tag")
 local actions = {}
 local env = setmetatable({
   o = { bind = function(key, _, action) actions[key] = action end, cmd_present = o.cmd_present, shell_quote = o.shell_quote },
-  hl = setmetatable({ config = function() end, unbind = function() end }, { __index = hl }),
+  hl = setmetatable({ config = function() end, unbind = function() end, define_submap = function() end }, { __index = hl }),
 }, { __index = _G })
 local data = os.getenv("XDG_DATA_HOME") or os.getenv("HOME") .. "/.local/share"
 assert(loadfile(data .. "/omarchy-mac-command/mac-command.lua", "t", env))()
-assert(actions[SHORTCUT], "Missing paste shortcut")()'''.replace("SHORTCUT", json.dumps(shortcut))
+if COMMAND_IMAGE then
+  assert(actions[SHORTCUT], "Missing paste shortcut")()
+else
+  hl.dispatch(hl.dsp.send_key_state({mods = "CTRL", key = "V", state = "down"}))
+  hl.timer(function()
+    hl.dispatch(hl.dsp.send_key_state({mods = "CTRL", key = "V", state = "up"}))
+  end, {timeout = 20, type = "oneshot"})
+end'''.replace("SHORTCUT", json.dumps(shortcut)).replace("COMMAND_IMAGE", "true" if command_image else "false")
             response = subprocess.run(["hyprctl", "eval", code], check=True,
                                       capture_output=True, text=True, timeout=5)
             assert "error" not in response.stdout.lower(), response.stdout
             process.wait(timeout=10)
             actual = json.loads(result.read_text())
             assert actual == [0x16], f"Expected Ctrl+V (22), received bytes {actual}"
-            label = "Command+V with an image" if command_image else "Physical Ctrl+V"
+            label = "Command+V with an image" if command_image else "Native Ctrl+V dispatch"
             print(f"Live terminal check passed: {label} delivered byte 0x16 to foot")
         finally:
             if process.poll() is None:

@@ -19,9 +19,9 @@ def action(key, mods):
     candidates = [b for b in bindings if b["key"].upper() == key and b["modmask"] == mods
                   and b["description"].startswith("Mac Command:")]
     assert len(candidates) == 1, (key, mods, candidates)
-    shortcut = {(4, "LEFT"): "CTRL + LEFT", (4, "RIGHT"): "CTRL + RIGHT",
-                (5, "LEFT"): "SHIFT + CTRL + LEFT", (8, "LEFT"): "ALT + LEFT",
-                (4, "BACKSPACE"): "CTRL + BACKSPACE"}[(mods, key)]
+    shortcut = {(64, "LEFT"): "SUPER + LEFT", (64, "RIGHT"): "SUPER + RIGHT",
+                (65, "LEFT"): "SHIFT + SUPER + LEFT", (8, "LEFT"): "ALT + LEFT",
+                (64, "BACKSPACE"): "SUPER + BACKSPACE", (64, "A"): "SUPER + A"}[(mods, key)]
     # Capture the installed module's callbacks without registering bindings or
     # changing configuration. Execute its real dispatches against this window.
     code = r'''local active = hl.get_active_window()
@@ -29,7 +29,7 @@ assert(active and active.class == "local.maccommand.probe", "Test window lost fo
 local actions = {}
 local env = setmetatable({
   o = { bind = function(key, _, action) actions[key] = action end, cmd_present = o.cmd_present },
-  hl = setmetatable({ config = function() end, unbind = function() end }, { __index = hl }),
+  hl = setmetatable({ config = function() end, unbind = function() end, define_submap = function() end }, { __index = hl }),
 }, { __index = _G })
 local data = os.getenv("XDG_DATA_HOME") or os.getenv("HOME") .. "/.local/share"
 assert(loadfile(data .. "/omarchy-mac-command/mac-command.lua", "t", env))()
@@ -57,14 +57,15 @@ class Probe(Gtk.Application):
 
     def next_case(self):
         self.cases = [
-            ("LEFT", 4, 0, 0, "alpha beta gamma"),
-            ("RIGHT", 4, 16, 16, "alpha beta gamma"),
-            ("LEFT", 5, 0, 10, "alpha beta gamma"),
+            ("LEFT", 64, 0, 0, "alpha beta gamma"),
+            ("RIGHT", 64, 16, 16, "alpha beta gamma"),
+            ("LEFT", 65, 0, 10, "alpha beta gamma"),
             ("LEFT", 8, 6, 6, "alpha beta gamma"),
-            ("BACKSPACE", 4, 0, 0, " gamma"),
+            ("BACKSPACE", 64, 0, 0, " gamma"),
+            ("A", 64, 0, 16, "alpha beta gamma"),
         ]
         if self.index == len(self.cases):
-            print("Live GTK checks passed: line start/end, selection, word navigation, delete to line start")
+            print("Live GTK checks passed: line start/end, selection, word navigation, delete to line start, select all")
             self.quit()
             return False
         self.buffer.set_text("alpha beta gamma")
